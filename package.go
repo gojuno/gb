@@ -11,7 +11,6 @@ import (
 	"time"
 	"text/template"
 
-	"github.com/constabulary/gb/internal/debug"
 	"github.com/pkg/errors"
 )
 
@@ -59,8 +58,8 @@ func (p *Package) includePaths() []string {
 	}
 }
 
-// Complete indicates if this is a pure Go package
-func (p *Package) Complete() bool {
+// complete indicates if this is a pure Go package
+func (p *Package) complete() bool {
 	// If we're giving the compiler the entire package (no C etc files), tell it that,
 	// so that it can give good error messages about forward declarations.
 	// Exceptions: a few standard packages have forward declarations for
@@ -68,7 +67,7 @@ func (p *Package) Complete() bool {
 	extFiles := len(p.CgoFiles) + len(p.CFiles) + len(p.CXXFiles) + len(p.MFiles) + len(p.SFiles) + len(p.SysoFiles) + len(p.SwigFiles) + len(p.SwigCXXFiles)
 	if p.Goroot {
 		switch p.ImportPath {
-		case "bytes", "net", "os", "runtime/pprof", "sync", "time":
+		case "bytes", "internal/poll", "net", "os", "runtime/pprof", "sync", "syscall", "time":
 			extFiles++
 		}
 	}
@@ -207,7 +206,7 @@ func (pkg *Package) isStale() bool {
 	}
 
 	if built.IsZero() {
-		debug.Debugf("%s is missing", pkg.pkgpath())
+		pkg.debug("%s is missing", pkg.pkgpath())
 		return true
 	}
 
@@ -229,11 +228,11 @@ func (pkg *Package) isStale() bool {
 	// a very common case.
 	if !pkg.Goroot {
 		if olderThan(pkg.tc.compiler()) {
-			debug.Debugf("%s is older than %s", pkg.pkgpath(), pkg.tc.compiler())
+			pkg.debug("%s is older than %s", pkg.pkgpath(), pkg.tc.compiler())
 			return true
 		}
 		if pkg.Main && olderThan(pkg.tc.linker()) {
-			debug.Debugf("%s is older than %s", pkg.pkgpath(), pkg.tc.compiler())
+			pkg.debug("%s is older than %s", pkg.pkgpath(), pkg.tc.compiler())
 			return true
 		}
 	}
@@ -251,7 +250,7 @@ func (pkg *Package) isStale() bool {
 			continue // ignore stale imports of synthetic packages
 		}
 		if olderThan(p.pkgpath()) {
-			debug.Debugf("%s is older than %s", pkg.pkgpath(), p.pkgpath())
+			pkg.debug("%s is older than %s", pkg.pkgpath(), p.pkgpath())
 			return true
 		}
 	}
@@ -259,7 +258,7 @@ func (pkg *Package) isStale() bool {
 	// if the main package is up to date but _newer_ than the binary (which
 	// could have been removed), then consider it stale.
 	if pkg.Main && newerThan(pkg.Binfile()) {
-		debug.Debugf("%s is newer than %s", pkg.pkgpath(), pkg.Binfile())
+		pkg.debug("%s is newer than %s", pkg.pkgpath(), pkg.Binfile())
 		return true
 	}
 
@@ -267,7 +266,7 @@ func (pkg *Package) isStale() bool {
 
 	for _, src := range srcs {
 		if olderThan(filepath.Join(pkg.Dir, src)) {
-			debug.Debugf("%s is older than %s", pkg.pkgpath(), filepath.Join(pkg.Dir, src))
+			pkg.debug("%s is older than %s", pkg.pkgpath(), filepath.Join(pkg.Dir, src))
 			return true
 		}
 	}

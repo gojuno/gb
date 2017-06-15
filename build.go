@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/constabulary/gb/internal/debug"
 	"github.com/constabulary/gb/internal/fileutils"
+	"github.com/constabulary/gb/internal/version"
 )
 
 // Build builds each of pkgs in succession. If pkg is a command, then the results of build include
@@ -47,14 +47,14 @@ func BuildPackages(pkgs ...*Package) (*Action, error) {
 	build := Action{
 		Name: fmt.Sprintf("build: %s", strings.Join(names(pkgs), ",")),
 		Run: func() error {
-			debug.Debugf("build duration: %v %v", time.Since(t0), pkgs[0].Statistics.String())
+			pkgs[0].debug("build duration: %v %v", time.Since(t0), pkgs[0].Statistics.String())
 			return nil
 		},
 	}
 
 	for _, pkg := range pkgs {
 		if len(pkg.GoFiles)+len(pkg.CgoFiles) == 0 {
-			debug.Debugf("skipping %v: no go files", pkg.ImportPath)
+			pkg.debug("skipping %v: no go files", pkg.ImportPath)
 			continue
 		}
 		a, err := BuildPackage(targets, pkg)
@@ -239,11 +239,18 @@ func BuildDependencies(targets map[string]*Action, pkg *Package) ([]*Action, err
 			// race binaries have extra implicit depdendenceis.
 			extra = append(extra, "runtime/race")
 		}
-
 	case len(pkg.CgoFiles) > 0 && pkg.ImportPath != "runtime/cgo":
 		// anything that uses cgo has a dependency on runtime/cgo which is
 		// only visible after cgo file generation.
+		// TODO(dfc) what about pkg.Main && pkg.CgoFiles > 0 ??
 		extra = append(extra, "runtime/cgo")
+	}
+	if pkg.TestScope {
+		extra = append(extra, "regexp")
+		if version.Version > 1.7 {
+			// since Go 1.8 tests have additional implicit dependencies
+			extra = append(extra, "testing/internal/testdeps")
+		}
 	}
 	for _, i := range extra {
 		p, err := pkg.ResolvePackage(i)

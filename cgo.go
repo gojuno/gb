@@ -12,14 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/constabulary/gb/internal/version"
 	"github.com/pkg/errors"
 )
 
 func cgo(pkg *Package) (*Action, []string, []string, error) {
 	switch {
-	case goversion == 1.4:
-		return cgo14(pkg)
-	case goversion > 1.4:
+	case version.Version > 1.5:
 		return cgo15(pkg)
 	default:
 		return nil, nil, nil, errors.Errorf("unsupported Go version: %v", runtime.Version())
@@ -406,12 +405,7 @@ func runcgo1(pkg *Package, cflags, ldflags []string) error {
 
 	args := []string{"-objdir", workdir}
 	switch {
-	case goversion == 1.4:
-		args = append(args,
-			"--",
-			"-I", pkg.Dir,
-		)
-	case goversion > 1.4:
+	case version.Version > 1.5:
 		args = append(args,
 			"-importpath", pkg.ImportPath,
 			"--",
@@ -446,12 +440,7 @@ func runcgo2(pkg *Package, dynout, ofile string) error {
 		"-objdir", workdir,
 	}
 	switch {
-	case goversion == 1.4:
-		args = append(args,
-			"-dynimport", ofile,
-			"-dynout", dynout,
-		)
-	case goversion > 1.4:
+	case version.Version > 1.5:
 		args = append(args,
 			"-dynpackage", pkg.Name,
 			"-dynimport", ofile,

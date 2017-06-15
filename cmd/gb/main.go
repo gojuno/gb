@@ -11,23 +11,10 @@ import (
 	"github.com/constabulary/gb"
 	"github.com/constabulary/gb/cmd"
 	"github.com/constabulary/gb/cmd/gb/internal/match"
-	"github.com/constabulary/gb/internal/debug"
 )
 
-var (
-	fs  = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-	cwd string
-)
-
-const (
-	// disable to keep working directory
-	destroyContext = true
-)
-
-func init() {
-	fs.StringVar(&cwd, "R", cmd.MustGetwd(), "set the project root") // actually the working directory to start the project root search
-	fs.Usage = usage
-}
+// disable to keep working directory
+const destroyContext = true
 
 var commands = make(map[string]*cmd.Command)
 
@@ -57,10 +44,17 @@ func fatalf(format string, args ...interface{}) {
 }
 
 func main() {
+	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	var cwd string
+	fs.StringVar(&cwd, "R", cmd.MustGetwd(), "set the project root") // actually the working directory to start the project root search
+	debug := fs.Bool("d", os.Getenv("DEBUG") != "", "enable debug output")
+	fs.Usage = usage
+
 	args := os.Args
 	if len(args) < 2 || args[1] == "-h" {
-		fs.Usage() // usage calles exit(2)
+		fs.Usage() // usage calls exit(2)
 	}
+
 	name := args[1]
 	if name == "help" {
 		help(args[2:])
@@ -73,8 +67,7 @@ func main() {
 	command.AddFlags(fs)
 
 	// parse 'em
-	err := command.FlagParse(fs, args)
-	if err != nil {
+	if err := command.FlagParse(fs, args); err != nil {
 		fatalf("could not parse flags: %v", err)
 	}
 
@@ -94,7 +87,7 @@ func main() {
 	}
 
 	// construct a project context at the current working directory.
-	ctx, err := newContext(cwd)
+	ctx, err := newContext(cwd, *debug)
 	if err != nil {
 		fatalf("unable to construct context: %v", err)
 	}
@@ -117,8 +110,6 @@ func main() {
 		args = match.ImportPaths(srcdir, cwd, args)
 	}
 
-	debug.Debugf("args: %v", args)
-
 	if destroyContext {
 		atExit = append(atExit, ctx.Destroy)
 	}
@@ -135,7 +126,7 @@ func lookupCommand(name string) *cmd.Command {
 		plugin, err := lookupPlugin(name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "FATAL: unknown command %q\n", name)
-			fs.Usage() // usage calles exit(2)
+			usage()
 		}
 		command = &cmd.Command{
 			Run: func(ctx *gb.Context, args []string) error {
@@ -180,7 +171,7 @@ func setCommandDefaults(command *cmd.Command) {
 	}
 }
 
-func newContext(cwd string) (*gb.Context, error) {
+func newContext(cwd string, debug bool) (*gb.Context, error) {
 	return cmd.NewContext(
 		cwd, // project root
 		gb.GcToolchain(),
@@ -188,6 +179,7 @@ func newContext(cwd string) (*gb.Context, error) {
 		gb.Ldflags(ldflags...),
 		gb.Tags(buildtags...),
 		gb.OutputFileTemplate(outputFileTemplate),
+		debugOption(debug),
 		func(c *gb.Context) error {
 			if !race {
 				return nil
@@ -213,4 +205,11 @@ func newContext(cwd string) (*gb.Context, error) {
 			return gb.WithRace(c)
 		},
 	)
+}
+
+func debugOption(debug bool) func(*gb.Context) error {
+	if debug {
+		return gb.WithDebug(os.Stderr)
+	}
+	return func(*gb.Context) error { return nil }
 }

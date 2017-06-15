@@ -21,6 +21,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/constabulary/gb/internal/version"
 )
 
 var (
@@ -1315,10 +1317,6 @@ func TestTestRace(t *testing.T) {
 	if !canRace {
 		t.Skip("skipping because race detector not supported")
 	}
-	if strings.HasPrefix(runtime.Version(), "go1.4") {
-		t.Skipf("skipping race test as Go version %v incorrectly marks race failures as success", runtime.Version())
-	}
-
 	gb := T{T: t}
 	defer gb.cleanup()
 
@@ -1390,7 +1388,7 @@ func TestNoBuildStdlib(t *testing.T) {
 }
 
 func TestCrossCompile(t *testing.T) {
-	if strings.HasPrefix(runtime.Version(), "go1.4") {
+	if version.Version == 1.4 {
 		t.Skip("skipping cross compile test, not supported on", runtime.Version())
 	}
 	gb := T{T: t}
@@ -1739,4 +1737,68 @@ func TestFoo(t *testing.T) {
 	tmpdir := gb.tempDir("tmp")
 	gb.run("test")
 	gb.mustBeEmpty(tmpdir)
+}
+
+func TestIssue707(t *testing.T) {
+	switch runtime.GOARCH {
+	case "amd64":
+		// good to go
+	default:
+		t.Skipf("test relies on being able to run cross compiled binaries, only supported on amd64")
+	}
+	if version.Version == 1.4 {
+		t.Skipf("skipping test on version: %v", runtime.Version())
+	}
+
+	gb := T{T: t}
+	defer gb.cleanup()
+
+	gb.tempFile("src/issue707/issue_test.go", `package t
+
+	import "testing"
+
+	func TestIssue707(t *testing.T) {
+		t.Logf("test passed")
+	}`)
+
+	gb.cd(gb.tempdir)
+	gb.setenv("GOARCH", "386")
+	gb.run("test", "issue707")
+}
+
+// check that building the test package works with .cpp files
+func TestTestWithCxxFiles(t *testing.T) {
+	gb := T{T: t}
+	defer gb.cleanup()
+
+	gb.tempFile("src/cxxtest/a/a.cpp", `extern "C" int testFunc(int i) {
+		return i;
+	}`)
+
+	gb.tempFile("src/cxxtest/a/a.h", `#ifndef A_H
+	#define A_H
+
+	#ifdef __cplusplus
+	#define EXTERNC extern "C"
+	#else
+	#define EXTERNC
+	#endif
+
+	EXTERNC int testFunc(int i);
+
+	#endif`)
+
+	gb.tempFile("src/cxxtest/a/a.go", `package a
+
+	/*
+	#include "a.h"
+	*/
+	import "C"
+
+	func init() {
+		C.testFunc(1)
+	}`)
+
+	gb.cd(gb.tempdir)
+	gb.run("test")
 }
